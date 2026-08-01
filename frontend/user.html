@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script>document.documentElement.setAttribute('data-theme', localStorage.getItem('wasTheme') || 'light');</script>
+<title>Live Feed — Web Alert System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+<style>.material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 20; vertical-align:middle; line-height:1;}</style>
+</head>
+<body>
+  <header class="console-header">
+    <div class="brand">
+      Web Alert System
+      <span class="brand-tag">Live Feed</span>
+    </div>
+    <div class="header-right">
+      <span class="user-chip">Welcome, <strong id="userName">User</strong></span>
+      <div class="pulse-badge"><span class="pulse-dot"></span> <span id="unreadCount">0</span> unread</div>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode"><span data-theme-icon>🌙</span></button>
+      <button class="ghost auto-width" onclick="handleLogout()">Log Out</button>
+    </div>
+  </header>
+
+  <div class="app-body">
+    <aside class="sidebar">
+      <div class="sidebar-label">Navigate</div>
+      <nav id="sideNav">
+        <a href="#feed" data-section="feed"><span class="material-symbols-outlined">notifications</span> Live Feed</a>
+        <a href="#subscriptions" data-section="subscriptions"><span class="material-symbols-outlined">tune</span> Subscriptions</a>
+      </nav>
+    </aside>
+
+    <main class="shell">
+      <div class="shell-inner">
+        <div class="stat-row" style="grid-template-columns: repeat(2, 1fr);">
+          <div class="stat-card">
+            <span class="material-symbols-outlined stat-icon">inbox</span>
+            <div class="stat-label">Alerts For You</div>
+            <div class="stat-value" id="statTotal">0</div>
+          </div>
+          <div class="stat-card">
+            <span class="material-symbols-outlined stat-icon">mark_email_unread</span>
+            <div class="stat-label">Unread</div>
+            <div class="stat-value" id="statUnread">0</div>
+          </div>
+        </div>
+
+        <div class="panel" id="feed">
+          <h2><span class="material-symbols-outlined" style="font-size:18px;">notifications</span> Your Alerts</h2>
+          <div class="chip-row" id="chipRow">
+            <button class="chip active" data-filter="all">All</button>
+            <button class="chip" data-filter="unread">Unread</button>
+            <button class="chip" data-filter="critical">Critical</button>
+            <button class="chip" data-filter="Emergency">Emergency</button>
+          </div>
+          <div class="filter-bar">
+            <input type="text" id="searchBox" placeholder="Search title or message..." />
+            <select id="categoryFilter">
+              <option value="">All Categories</option>
+              <option value="Emergency">Emergency</option>
+              <option value="System Update">System Update</option>
+              <option value="General Announcement">General Announcement</option>
+            </select>
+          </div>
+          <div class="log-feed" id="alertList"></div>
+        </div>
+
+        <div class="panel" id="subscriptions">
+          <h2><span class="material-symbols-outlined" style="font-size:18px;">tune</span> Manage Subscriptions</h2>
+          <div class="subs-row">
+            <input type="text" id="groupsInput" placeholder="e.g. general, cs-department, hostel-block-a" />
+            <button onclick="saveSubscriptions()">Save</button>
+          </div>
+          <p class="subs-hint">You only receive alerts targeted at groups you're subscribed to. "general" reaches everyone.</p>
+          <p class="error" id="subsMsg"></p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    requireLogin();
+    document.getElementById("userName").textContent = getUser().name;
+    document.getElementById("groupsInput").value = (getUser().groups || ["general"]).join(", ");
+    initThemeIcon();
+
+    const socket = io(SOCKET_BASE);
+    const alertList = document.getElementById("alertList");
+    const myUserId = getUser().id;
+    let myGroups = getUser().groups || ["general"];
+    let allAlerts = [];
+    let quickFilter = "all";
+    const priorityRank = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+
+    function handleLogout() {
+      socket.disconnect();
+      logout();
+    }
+    window.addEventListener("beforeunload", () => socket.disconnect());
+
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
+    function categoryClass(category) { return category.replace(/\s+/g, "-"); }
+    function isRelevant(alert) { return alert.targetGroups.some((g) => myGroups.includes(g)); }
+    function isRead(alert) { return (alert.readBy || []).includes(myUserId); }
+    function isAcknowledged(alert) { return (alert.acknowledgedBy || []).includes(myUserId); }
+
+    function renderAlert(alert) {
+      const read = isRead(alert);
+      const isCriticalUnread = !read && alert.priority === "Critical";
+      const div = document.createElement("div");
+      div.className = `log-entry ${categoryClass(alert.category)} ${read ? "" : "unread"} ${isCriticalUnread ? "priority-critical-unread" : ""}`;
+      div.dataset.id = alert._id;
+
+      let actionsHtml = "";
+      if (!read) {
+        actionsHtml += `<button class="btn-mark-read" onclick="markAsRead('${alert._id}')">Mark as read</button>`;
+      }
+      if (alert.category === "Emergency") {
+        actionsHtml += isAcknowledged(alert)
+          ? `<span class="checked-in-tag">✓ You checked in as safe</span>`
+          : `<button class="btn-safe" onclick="acknowledgeAlert('${alert._id}')">I'm Safe</button>`;
+      }
+
+      div.innerHTML = `
+        <div class="log-top">
+          ${read ? "" : '<span class="unread-dot"></span>'}
+          <span class="category-tag ${categoryClass(alert.category)}">${alert.category}</span>
+          <span class="priority-tag ${alert.priority || "Medium"}">${alert.priority || "Medium"}</span>
+        </div>
+        <h3>${alert.title}</h3>
+        <p>${alert.message}</p>
+        <div class="log-meta">${new Date(alert.createdAt).toLocaleString()}</div>
+        ${actionsHtml ? `<div class="log-actions">${actionsHtml}</div>` : ""}
+      `;
+      return div;
+    }
+
+    function renderList() {
+      const search = document.getElementById("searchBox").value.toLowerCase();
+      const category = document.getElementById("categoryFilter").value;
+
+      const visible = allAlerts.filter((a) => {
+        if (!isRelevant(a)) return false;
+        if (category && a.category !== category) return false;
+        if (search && !(a.title.toLowerCase().includes(search) || a.message.toLowerCase().includes(search))) return false;
+        if (quickFilter === "unread" && isRead(a)) return false;
+        if (quickFilter === "critical" && a.priority !== "Critical") return false;
+        if (quickFilter === "Emergency" && a.category !== "Emergency") return false;
+        return true;
+      }).sort((a, b) => {
+        const pDiff = (priorityRank[a.priority] ?? 2) - (priorityRank[b.priority] ?? 2);
+        if (pDiff !== 0) return pDiff;
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      });
+
+      alertList.innerHTML = "";
+      if (visible.length === 0) {
+        alertList.innerHTML = `<div class="empty-state">Nothing matches right now — new alerts still appear here instantly.</div>`;
+      } else {
+        visible.forEach((a) => alertList.appendChild(renderAlert(a)));
+      }
+
+      const relevantAll = allAlerts.filter(isRelevant);
+      const unread = relevantAll.filter((a) => !isRead(a)).length;
+      document.getElementById("statTotal").textContent = relevantAll.length;
+      document.getElementById("statUnread").textContent = unread;
+      document.getElementById("unreadCount").textContent = unread;
+    }
+
+    document.getElementById("searchBox").addEventListener("input", renderList);
+    document.getElementById("categoryFilter").addEventListener("change", renderList);
+    document.getElementById("chipRow").addEventListener("click", (e) => {
+      const btn = e.target.closest(".chip");
+      if (!btn) return;
+      document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+      btn.classList.add("active");
+      quickFilter = btn.dataset.filter;
+      renderList();
+    });
+
+    async function loadAlerts() {
+      const res = await fetch(`${API_BASE}/alerts`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      allAlerts = await res.json();
+      renderList();
+    }
+
+    async function markAsRead(id) {
+      await fetch(`${API_BASE}/alerts/${id}/read`, { method: "POST", headers: { Authorization: `Bearer ${getToken()}` } });
+      const alert = allAlerts.find((a) => a._id === id);
+      if (alert) {
+        alert.readBy = alert.readBy || [];
+        if (!alert.readBy.includes(myUserId)) alert.readBy.push(myUserId);
+      }
+      renderList();
+    }
+
+    async function acknowledgeAlert(id) {
+      await fetch(`${API_BASE}/alerts/${id}/acknowledge`, { method: "POST", headers: { Authorization: `Bearer ${getToken()}` } });
+      const alert = allAlerts.find((a) => a._id === id);
+      if (alert) {
+        alert.acknowledgedBy = alert.acknowledgedBy || [];
+        alert.readBy = alert.readBy || [];
+        if (!alert.acknowledgedBy.includes(myUserId)) alert.acknowledgedBy.push(myUserId);
+        if (!alert.readBy.includes(myUserId)) alert.readBy.push(myUserId);
+      }
+      renderList();
+    }
+
+    async function saveSubscriptions() {
+      const raw = document.getElementById("groupsInput").value;
+      const groups = raw.split(",").map((g) => g.trim()).filter(Boolean);
+      const subsMsg = document.getElementById("subsMsg");
+      subsMsg.textContent = "";
+
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ groups }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        subsMsg.textContent = data.message || "Could not update subscriptions.";
+        return;
+      }
+
+      updateStoredUser(data);
+      myGroups = data.groups;
+      renderList();
+    }
+
+    function showToast(alert) {
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      toast.innerHTML = `
+        <div class="toast-title">${alert.title}</div>
+        <div>${alert.message}</div>
+        <div class="toast-time">${new Date().toLocaleTimeString()} · ${alert.category}</div>
+      `;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 5000);
+
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(alert.title, { body: alert.message });
+      }
+    }
+
+    socket.on("newAlert", (alert) => {
+      if (!isRelevant(alert)) return;
+      allAlerts.unshift(alert);
+      renderList();
+      showToast(alert);
+    });
+    socket.on("alertDeleted", (id) => {
+      allAlerts = allAlerts.filter((a) => a._id !== id);
+      renderList();
+    });
+
+    loadAlerts();
+
+    setInterval(() => {
+      const stillUnreadCritical = allAlerts.filter((a) => isRelevant(a) && a.priority === "Critical" && !isRead(a));
+      stillUnreadCritical.forEach(showToast);
+    }, 45000);
+
+    // --- Sidebar active-section highlighting ---
+    const navLinks = document.querySelectorAll("#sideNav a");
+    const sections = ["feed", "subscriptions"].map((id) => document.getElementById(id));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            navLinks.forEach((l) => l.classList.toggle("active", l.dataset.section === entry.target.id));
+          }
+        });
+      },
+      { rootMargin: "-40% 0px -50% 0px" }
+    );
+    sections.forEach((s) => s && observer.observe(s));
+  </script>
+</body>
+</html>
