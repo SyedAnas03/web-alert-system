@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script>document.documentElement.setAttribute('data-theme', localStorage.getItem('wasTheme') || 'light');</script>
+<title>My Profile — Web Alert System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+<style>.material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 20; vertical-align:middle; line-height:1;}</style>
+</head>
+<body>
+  <header class="console-header">
+    <div class="brand">
+      Web Alert System
+      <span class="brand-tag">My Profile</span>
+    </div>
+    <div class="header-right">
+      <span class="user-chip">Welcome, <strong id="userName">User</strong></span>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode"><span data-theme-icon>🌙</span></button>
+      <button class="ghost auto-width" onclick="logout()">Log Out</button>
+    </div>
+  </header>
+
+  <div class="app-body">
+    <aside class="sidebar">
+      <div class="sidebar-label">Navigate</div>
+      <nav>
+        <a href="#" id="backLink"><span class="material-symbols-outlined">arrow_back</span> Back</a>
+        <a href="profile.html" class="active"><span class="material-symbols-outlined">person</span> My Profile</a>
+      </nav>
+    </aside>
+
+    <main class="shell">
+      <div class="shell-inner">
+
+        <div class="panel">
+          <div class="profile-header">
+            <div class="avatar-upload-circle" id="avatarCircle">
+              <img id="avatarImg" alt="" style="display:none;" />
+              <span id="avatarInitials"></span>
+              <label class="avatar-edit-overlay" for="avatarInput">Change</label>
+            </div>
+            <div class="profile-identity">
+              <h2><span id="profileName">—</span><span class="role-tag" id="profileRoleTag"></span><span class="role-tag verified-tag" id="verifiedBadge" style="display:none;"><span class="material-symbols-outlined" style="font-size:13px;">verified</span> Verified</span></h2>
+              <div class="profile-meta-line" id="profileEmail"></div>
+              <div class="profile-meta-line" id="profileLastLogin"></div>
+              <div class="avatar-actions">
+                <button type="button" onclick="document.getElementById('avatarInput').click()">Upload photo</button>
+                <button type="button" class="ghost" id="removeAvatarBtn" onclick="removeAvatar()" style="display:none;">Remove photo</button>
+              </div>
+              <div class="avatar-hint">JPG, PNG, or WEBP. Max 2MB, and no larger than 2000×2000px.</div>
+              <input type="file" id="avatarInput" accept="image/jpeg,image/png,image/webp" style="display:none;" />
+            </div>
+          </div>
+          <p class="error" id="avatarMsg"></p>
+        </div>
+
+        <div class="panel">
+          <h2><span class="material-symbols-outlined" style="font-size:18px;">edit</span> Edit Details</h2>
+          <form id="profileForm">
+            <div class="profile-form-grid">
+              <div class="field-group">
+                <label for="nameInput">Full name</label>
+                <input type="text" id="nameInput" required maxlength="80" />
+              </div>
+              <div class="field-group">
+                <label for="phoneInput">Phone number</label>
+                <input type="text" id="phoneInput" placeholder="e.g. +92 300 1234567" maxlength="20" />
+              </div>
+              <div class="field-group">
+                <label for="emailReadonly">Email (can't be changed here)</label>
+                <input type="email" id="emailReadonly" disabled />
+              </div>
+              <div class="field-group">
+                <label for="groupsReadonly">Alert groups</label>
+                <input type="text" id="groupsReadonly" disabled />
+              </div>
+            </div>
+            <p class="error" id="profileMsg"></p>
+            <p class="profile-success" id="profileSuccessMsg"></p>
+            <button type="submit" style="width:auto; margin-top:12px;">Save changes</button>
+          </form>
+        </div>
+
+        <div class="panel" id="emailDiagPanel" style="display:none;">
+          <h2><span class="material-symbols-outlined" style="font-size:18px;">mail</span> Email Diagnostics</h2>
+          <p class="subs-hint">If alert or password-reset emails aren't arriving, send yourself a test email — this checks the live SMTP connection (including on the deployed server) and reports back exactly why it failed, if it did.</p>
+          <button type="button" style="width:auto;" onclick="sendTestEmail()">Send test email to myself</button>
+          <p class="error" id="emailDiagMsg"></p>
+          <p class="profile-success" id="emailDiagSuccess"></p>
+        </div>
+
+        <div class="panel">
+          <h2><span class="material-symbols-outlined" style="font-size:18px;">lock</span> Two-Factor Authentication</h2>
+          <p class="subs-hint">When this is on, logging in requires your password AND a 6-digit code emailed to you each time. This is what earns the "Verified" badge next to your name.</p>
+
+          <div id="twoFactorOffView">
+            <button type="button" onclick="enable2fa()">Turn on 2FA</button>
+          </div>
+
+          <div id="twoFactorOnView" style="display:none;">
+            <p class="profile-success" style="margin-top:0;"><span class="material-symbols-outlined" style="font-size:16px;">check_circle</span> Two-factor authentication is ON.</p>
+            <label for="disable2faPassword" style="font-size:12px; color:var(--ink-soft); font-weight:600;">Enter your password to turn it off</label>
+            <input type="password" id="disable2faPassword" placeholder="Current password" style="margin-top:6px;" />
+            <button type="button" class="ghost" style="width:auto; margin-top:8px;" onclick="disable2fa()">Turn off 2FA</button>
+          </div>
+          <p class="error" id="twoFactorMsg"></p>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script>
+    requireLogin();
+    initThemeIcon();
+
+    const user0 = getUser();
+    document.getElementById("backLink").href = (user0.role === "admin" || user0.role === "moderator") ? "dashboard.html" : "user.html";
+
+    function paint(user) {
+      document.getElementById("userName").textContent = user.name;
+      document.getElementById("profileName").textContent = user.name;
+      const roleTag = document.getElementById("profileRoleTag");
+      roleTag.textContent = user.role;
+      roleTag.className = "role-tag";
+      document.getElementById("profileEmail").textContent = user.email;
+      document.getElementById("profileLastLogin").textContent = user.lastLoginAt
+        ? `Last login: ${new Date(user.lastLoginAt).toLocaleString()}`
+        : "";
+
+      document.getElementById("nameInput").value = user.name || "";
+      document.getElementById("phoneInput").value = user.phone || "";
+      document.getElementById("emailReadonly").value = user.email || "";
+      document.getElementById("groupsReadonly").value = (user.groups || []).join(", ");
+
+      const badge = document.getElementById("verifiedBadge");
+      badge.style.display = user.twoFactorEnabled ? "inline-flex" : "none";
+      document.getElementById("twoFactorOffView").style.display = user.twoFactorEnabled ? "none" : "block";
+      document.getElementById("twoFactorOnView").style.display = user.twoFactorEnabled ? "block" : "none";
+
+      const img = document.getElementById("avatarImg");
+      const initialsEl = document.getElementById("avatarInitials");
+      const removeBtn = document.getElementById("removeAvatarBtn");
+      if (user.avatarUrl) {
+        img.src = resolveAvatarUrl(user.avatarUrl);
+        img.style.display = "block";
+        initialsEl.style.display = "none";
+        removeBtn.style.display = "inline-block";
+      } else {
+        img.style.display = "none";
+        initialsEl.style.display = "block";
+        initialsEl.textContent = initials(user.name);
+        removeBtn.style.display = "none";
+      }
+    }
+
+    async function refreshProfile() {
+      const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      if (!res.ok) return;
+      const data = await res.json();
+      updateStoredUser(data);
+      paint(data);
+    }
+
+    paint(user0);
+    refreshProfile();
+
+    if (user0.role === "admin") {
+      document.getElementById("emailDiagPanel").style.display = "block";
+    }
+
+    async function sendTestEmail() {
+      const msg = document.getElementById("emailDiagMsg");
+      const success = document.getElementById("emailDiagSuccess");
+      msg.textContent = "";
+      success.textContent = "Sending...";
+
+      const res = await fetch(`${API_BASE}/auth/test-email`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        success.textContent = "";
+        msg.textContent = data.error || data.message || "Test email failed.";
+        return;
+      }
+      msg.textContent = "";
+      success.textContent = data.message;
+    }
+
+    // --- Two-factor authentication ---
+    async function enable2fa() {
+      const twoFactorMsg = document.getElementById("twoFactorMsg");
+      twoFactorMsg.textContent = "";
+      const res = await fetch(`${API_BASE}/auth/me/2fa/enable`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        twoFactorMsg.textContent = data.message || "Could not enable 2FA.";
+        return;
+      }
+      updateStoredUser(data);
+      paint(data);
+    }
+
+    async function disable2fa() {
+      const twoFactorMsg = document.getElementById("twoFactorMsg");
+      twoFactorMsg.textContent = "";
+      const password = document.getElementById("disable2faPassword").value;
+      if (!password) {
+        twoFactorMsg.textContent = "Enter your password to confirm.";
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/auth/me/2fa/disable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        twoFactorMsg.textContent = data.message || "Could not disable 2FA.";
+        return;
+      }
+      document.getElementById("disable2faPassword").value = "";
+      updateStoredUser(data);
+      paint(data);
+    }
+
+    // --- Save name/phone ---
+    document.getElementById("profileForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const profileMsg = document.getElementById("profileMsg");
+      const successMsg = document.getElementById("profileSuccessMsg");
+      profileMsg.textContent = "";
+      successMsg.textContent = "";
+
+      const name = document.getElementById("nameInput").value.trim();
+      const phone = document.getElementById("phoneInput").value.trim();
+
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ name, phone }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        profileMsg.textContent = data.message || "Could not save your changes.";
+        return;
+      }
+
+      updateStoredUser(data);
+      paint(data);
+      successMsg.textContent = "Saved.";
+      setTimeout(() => (successMsg.textContent = ""), 3000);
+    });
+
+    // --- Avatar upload ---
+    document.getElementById("avatarInput").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      e.target.value = ""; // allow re-selecting the same file later
+      if (!file) return;
+
+      const avatarMsg = document.getElementById("avatarMsg");
+      avatarMsg.textContent = "";
+
+      // Client-side checks first, so the user gets instant feedback instead of
+      // waiting on a round trip for something we can already tell is wrong.
+      if (file.size > AVATAR_MAX_BYTES) {
+        avatarMsg.textContent = "Image is too large. Max size is 2MB.";
+        return;
+      }
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+        avatarMsg.textContent = "Only JPG, PNG, or WEBP images are allowed.";
+        return;
+      }
+
+      const dimensionsOk = await new Promise((resolve) => {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(img.width <= AVATAR_MAX_DIMENSION && img.height <= AVATAR_MAX_DIMENSION);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(false);
+        };
+        img.src = objectUrl;
+      });
+      if (!dimensionsOk) {
+        avatarMsg.textContent = `Image dimensions must be ${AVATAR_MAX_DIMENSION}x${AVATAR_MAX_DIMENSION}px or smaller.`;
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("avatar", file);
+
+      const res = await fetch(`${API_BASE}/auth/me/avatar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` }, // no Content-Type - browser sets the multipart boundary
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        avatarMsg.textContent = data.message || "Could not upload photo.";
+        return;
+      }
+
+      updateStoredUser(data);
+      paint(data);
+    });
+
+    async function removeAvatar() {
+      const res = await fetch(`${API_BASE}/auth/me/avatar`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        updateStoredUser(data);
+        paint(data);
+      }
+    }
+  </script>
+</body>
+</html>

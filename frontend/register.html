@@ -41,6 +41,15 @@
         <p class="error" id="errorMsg"></p>
         <button type="submit">Register</button>
       </form>
+
+      <form id="otpForm" style="display:none;">
+        <p class="muted" id="otpIntro" style="margin-top:0;"></p>
+        <input type="text" id="otpCode" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required style="letter-spacing:4px; text-align:center; font-family:var(--font-mono); font-size:18px;" />
+        <p class="error" id="otpErrorMsg"></p>
+        <button type="submit">Verify &amp; Continue</button>
+        <p class="muted"><a href="#" id="resendLink">Resend code</a></p>
+      </form>
+
       <p class="muted">Already have an account? <a href="index.html">Log in</a></p>
       <p class="muted">Note: in a real deployment, admin accounts should not be self-registered — this option exists only so you can create a test admin for your demo.</p>
     </div>
@@ -50,6 +59,7 @@
   <script>
     initThemeIcon();
     const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,}$/;
+    let pendingEmail = "";
 
     document.getElementById("registerForm").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -83,10 +93,58 @@
           return;
         }
 
+        // Registering no longer logs you in directly - the account needs its
+        // email confirmed with a code first. Swap to the OTP step.
+        pendingEmail = data.email;
+        document.getElementById("registerForm").style.display = "none";
+        document.getElementById("otpForm").style.display = "block";
+        document.getElementById("otpIntro").textContent = `We sent a 6-digit code to ${pendingEmail}. Enter it below to finish creating your account.`;
+      } catch (err) {
+        errorMsg.textContent = "Could not reach the server. Is the backend running?";
+      }
+    });
+
+    document.getElementById("otpForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = document.getElementById("otpCode").value.trim();
+      const otpErrorMsg = document.getElementById("otpErrorMsg");
+      otpErrorMsg.textContent = "";
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/verify-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: pendingEmail, code }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          otpErrorMsg.textContent = data.message || "Verification failed.";
+          return;
+        }
+
         saveSession(data.token, data.user);
         window.location.href = data.user.role === "admin" ? "dashboard.html" : "user.html";
       } catch (err) {
-        errorMsg.textContent = "Could not reach the server. Is the backend running?";
+        otpErrorMsg.textContent = "Could not reach the server. Is the backend running?";
+      }
+    });
+
+    document.getElementById("resendLink").addEventListener("click", async (e) => {
+      e.preventDefault();
+      const otpErrorMsg = document.getElementById("otpErrorMsg");
+      otpErrorMsg.textContent = "";
+      try {
+        const res = await fetch(`${API_BASE}/auth/resend-verification`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: pendingEmail }),
+        });
+        const data = await res.json();
+        otpErrorMsg.style.color = "var(--online)";
+        otpErrorMsg.textContent = data.message;
+      } catch (err) {
+        otpErrorMsg.textContent = "Could not reach the server.";
       }
     });
   </script>

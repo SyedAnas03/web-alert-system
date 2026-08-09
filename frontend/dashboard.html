@@ -20,6 +20,10 @@
     <div class="header-right">
       <span class="user-chip">Welcome, <strong id="userName">Admin</strong><span class="role-tag" id="roleTag"></span></span>
       <div class="pulse-badge"><span class="pulse-dot"></span> <span id="onlineCount">0</span> online now</div>
+      <a class="avatar-link" href="profile.html" title="My Profile" id="avatarLink">
+        <img id="headerAvatarImg" alt="" style="display:none;" />
+        <span id="headerAvatarInitials"></span>
+      </a>
       <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode"><span data-theme-icon>🌙</span></button>
       <button class="ghost auto-width" onclick="handleLogout()">Log Out</button>
     </div>
@@ -111,6 +115,17 @@
     document.getElementById("userName").textContent = me.name;
     document.getElementById("roleTag").textContent = me.role;
     initThemeIcon();
+    (function renderHeaderAvatar() {
+      const img = document.getElementById("headerAvatarImg");
+      const initialsEl = document.getElementById("headerAvatarInitials");
+      if (me.avatarUrl) {
+        img.src = resolveAvatarUrl(me.avatarUrl);
+        img.style.display = "block";
+        initialsEl.style.display = "none";
+      } else {
+        initialsEl.textContent = initials(me.name);
+      }
+    })();
 
     if (me.role !== "admin") {
       document.getElementById("emergencyOption").remove();
@@ -235,7 +250,11 @@
       const category = document.getElementById("category").value;
       const priority = document.getElementById("priority").value;
       const groupsRaw = document.getElementById("targetGroups").value;
-      const targetGroups = groupsRaw ? groupsRaw.split(",").map((g) => g.trim()) : ["general"];
+      // Filter out empty entries too (e.g. a trailing comma like "general, "
+      // used to leave a "" in the array, which matched zero real users and
+      // silently sent zero emails even with "Send via Email" checked).
+      const parsedGroups = groupsRaw ? groupsRaw.split(",").map((g) => g.trim()).filter(Boolean) : [];
+      const targetGroups = parsedGroups.length ? parsedGroups : ["general"];
       const sendEmailFlag = document.getElementById("sendEmail").checked;
 
       const res = await fetch(`${API_BASE}/alerts`, {

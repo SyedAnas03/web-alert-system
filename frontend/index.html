@@ -28,6 +28,15 @@
         <p class="error" id="errorMsg"></p>
         <button type="submit">Log In</button>
       </form>
+
+      <form id="otpForm" style="display:none;">
+        <p class="muted" id="otpIntro" style="margin-top:0;"></p>
+        <input type="text" id="otpCode" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required style="letter-spacing:4px; text-align:center; font-family:var(--font-mono); font-size:18px;" />
+        <p class="error" id="otpErrorMsg"></p>
+        <button type="submit">Verify &amp; Continue</button>
+        <p class="muted"><a href="#" id="resendLink">Resend code</a></p>
+      </form>
+
       <p class="muted"><a href="forgot-password.html">Forgot password?</a></p>
       <p class="muted">No account? <a href="register.html">Register here</a></p>
     </div>
@@ -36,6 +45,22 @@
   <script src="js/config.js"></script>
   <script>
     initThemeIcon();
+    showFlashMessage("errorMsg"); // e.g. "signed in on another device" notice from logout()
+
+    // Which OTP flow we're in determines which endpoint the otpForm submits to.
+    // "verify-email": account exists but was never confirmed (via /verify-email).
+    // "login-2fa": password was correct, this account also requires a login code (via /login/verify-otp).
+    let otpMode = null;
+    let pendingEmail = "";
+    let pendingChallengeToken = "";
+
+    function showOtpStep(mode, introText) {
+      otpMode = mode;
+      document.getElementById("loginForm").style.display = "none";
+      document.getElementById("otpForm").style.display = "block";
+      document.getElementById("otpIntro").textContent = introText;
+    }
+
     document.getElementById("loginForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const email = document.getElementById("email").value;
@@ -52,7 +77,18 @@
         const data = await res.json();
 
         if (!res.ok) {
+          if (data.code === "EMAIL_NOT_VERIFIED") {
+            pendingEmail = data.email;
+            showOtpStep("verify-email", `We sent a fresh 6-digit code to ${pendingEmail}. Enter it below to verify your email.`);
+            return;
+          }
           errorMsg.textContent = data.message || "Login failed.";
+          return;
+        }
+
+        if (data.requiresOtp) {
+          pendingChallengeToken = data.challengeToken;
+          showOtpStep("login-2fa", data.message || "Enter the 6-digit code we just emailed you.");
           return;
         }
 
@@ -60,6 +96,60 @@
         window.location.href = data.user.role === "admin" ? "dashboard.html" : "user.html";
       } catch (err) {
         errorMsg.textContent = "Could not reach the server. Is the backend running?";
+      }
+    });
+
+    document.getElementById("otpForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = document.getElementById("otpCode").value.trim();
+      const otpErrorMsg = document.getElementById("otpErrorMsg");
+      otpErrorMsg.style.color = "";
+      otpErrorMsg.textContent = "";
+
+      const isVerifyEmail = otpMode === "verify-email";
+      const url = isVerifyEmail ? `${API_BASE}/auth/verify-email` : `${API_BASE}/auth/login/verify-otp`;
+      const body = isVerifyEmail ? { email: pendingEmail, code } : { challengeToken: pendingChallengeToken, code };
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          otpErrorMsg.textContent = data.message || "Verification failed.";
+          return;
+        }
+
+        saveSession(data.token, data.user);
+        window.location.href = data.user.role === "admin" ? "dashboard.html" : "user.html";
+      } catch (err) {
+        otpErrorMsg.textContent = "Could not reach the server. Is the backend running?";
+      }
+    });
+
+    document.getElementById("resendLink").addEventListener("click", async (e) => {
+      e.preventDefault();
+      const otpErrorMsg = document.getElementById("otpErrorMsg");
+      otpErrorMsg.textContent = "";
+
+      const isVerifyEmail = otpMode === "verify-email";
+      const url = isVerifyEmail ? `${API_BASE}/auth/resend-verification` : `${API_BASE}/auth/login/resend-otp`;
+      const body = isVerifyEmail ? { email: pendingEmail } : { challengeToken: pendingChallengeToken };
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        otpErrorMsg.style.color = res.ok ? "var(--online)" : "";
+        otpErrorMsg.textContent = data.message;
+      } catch (err) {
+        otpErrorMsg.textContent = "Could not reach the server.";
       }
     });
   </script>

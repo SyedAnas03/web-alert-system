@@ -1,7 +1,9 @@
 require("dotenv").config();
 const express = require("express");
 const http = require("http");
+const path = require("path");
 const cors = require("cors");
+const multer = require("multer");
 const { Server } = require("socket.io");
 const rateLimit = require("express-rate-limit");
 
@@ -9,12 +11,16 @@ const connectDB = require("./config/db");
 const authRoutes = require("./routes/auth");
 const alertRoutes = require("./routes/alerts");
 const userRoutes = require("./routes/users");
+const { verifyEmailConfig } = require("./utils/email");
 
 const app = express();
 const server = http.createServer(app); // Socket.IO needs the raw http server, not just Express
 
 // --- Database ---
 connectDB();
+
+// --- Email: check credentials once at boot instead of failing silently later ---
+verifyEmailConfig();
 
 // --- Socket.IO setup ---
 const io = new Server(server, {
@@ -52,6 +58,9 @@ const apiLimiter = rateLimit({
 });
 app.use("/api", apiLimiter);
 
+// --- Uploaded profile pictures (public, read-only) ---
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 // --- Routes ---
 app.use("/api/auth", authRoutes);
 app.use("/api/alerts", alertRoutes);
@@ -59,6 +68,25 @@ app.use("/api/users", userRoutes);
 
 app.get("/", (req, res) => {
   res.send("Web Alert System API is running.");
+});
+
+// --- Error handler ---
+// Multer throws its errors into next(err) rather than returning them from the
+// route handler, so a normal try/catch in routes/auth.js never sees them.
+// This is the one place that turns "file too big" / "wrong type" into a
+// proper JSON response instead of a generic 500 / crash.
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({ message: "Image is too large. Max size is 2MB." });
+    }
+    return res.status(400).json({ message: err.message || "Upload failed." });
+  }
+  if (err) {
+    console.error("Unhandled error:", err);
+    return res.status(500).json({ message: "Something went wrong on the server." });
+  }
+  next();
 });
 
 const PORT = process.env.PORT || 5000;

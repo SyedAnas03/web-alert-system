@@ -20,6 +20,10 @@
     <div class="header-right">
       <span class="user-chip">Welcome, <strong id="userName">User</strong></span>
       <div class="pulse-badge"><span class="pulse-dot"></span> <span id="unreadCount">0</span> unread</div>
+      <a class="avatar-link" href="profile.html" title="My Profile" id="avatarLink">
+        <img id="headerAvatarImg" alt="" style="display:none;" />
+        <span id="headerAvatarInitials"></span>
+      </a>
       <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode"><span data-theme-icon>🌙</span></button>
       <button class="ghost auto-width" onclick="handleLogout()">Log Out</button>
     </div>
@@ -89,6 +93,20 @@
     document.getElementById("userName").textContent = getUser().name;
     document.getElementById("groupsInput").value = (getUser().groups || ["general"]).join(", ");
     initThemeIcon();
+    renderHeaderAvatar();
+
+    function renderHeaderAvatar() {
+      const u = getUser();
+      const img = document.getElementById("headerAvatarImg");
+      const initialsEl = document.getElementById("headerAvatarInitials");
+      if (u && u.avatarUrl) {
+        img.src = resolveAvatarUrl(u.avatarUrl);
+        img.style.display = "block";
+        initialsEl.style.display = "none";
+      } else {
+        initialsEl.textContent = initials(u && u.name);
+      }
+    }
 
     const socket = io(SOCKET_BASE);
     const alertList = document.getElementById("alertList");

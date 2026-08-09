@@ -26,12 +26,18 @@ router.post("/", protect, requireRole("admin", "moderator"), async (req, res) =>
       return res.status(403).json({ message: "Only admins can send Emergency alerts." });
     }
 
+    // Sanitize target groups defensively here too (not just on the frontend) -
+    // a stray comma or blank entry (e.g. "general, ") used to slip an empty
+    // string "" into targetGroups, which then matched zero real users and
+    // silently sent zero emails, with no error anywhere.
+    const cleanGroups = Array.isArray(targetGroups) ? targetGroups.map((g) => String(g).trim()).filter(Boolean) : [];
+
     const alert = await Alert.create({
       title,
       message,
       category,
       priority: priority || "Medium",
-      targetGroups: targetGroups && targetGroups.length ? targetGroups : ["general"],
+      targetGroups: cleanGroups.length ? cleanGroups : ["general"],
       sendEmail: !!shouldEmail,
       createdBy: req.user.id,
     });
@@ -43,9 +49,34 @@ router.post("/", protect, requireRole("admin", "moderator"), async (req, res) =>
     // 2. Optionally email everyone in the targeted group(s).
     if (shouldEmail) {
       const recipients = await User.find({ groups: { $in: alert.targetGroups } });
-      recipients.forEach((r) => {
-        sendEmail(r.email, `[${alert.category}] ${alert.title}`, alert.message);
+      console.log(
+        `[alert-email] "${alert.title}" targets [${alert.targetGroups.join(", ")}] -> ${recipients.length} matching user(s).`
+      );
+
+      if (recipients.length === 0) {
+        console.warn(
+          "[alert-email] No users are subscribed to that group, so no emails will be sent. " +
+            "Check each user's Groups field on their dashboard - it must contain one of: " +
+            alert.targetGroups.join(", ")
+        );
+      }
+
+      const results = await Promise.allSettled(
+        recipients.map((r) => sendEmail(r.email, `[${alert.category}] ${alert.title}`, alert.message))
+      );
+      const failed = [];
+      results.forEach((r, i) => {
+        const ok = r.status === "fulfilled" && r.value.ok;
+        if (!ok) {
+          const reason = r.status === "fulfilled" ? r.value.error : r.reason;
+          failed.push({ to: recipients[i].email, reason });
+        }
       });
+      if (failed.length) {
+        console.error(`[alert-email] ${failed.length}/${recipients.length} email(s) failed:`, failed);
+      } else if (recipients.length) {
+        console.log(`[alert-email] All ${recipients.length} email(s) sent successfully.`);
+      }
     }
 
     // 3. Optionally mirror the alert to Discord (no-op if DISCORD_WEBHOOK_URL isn't set).
