@@ -14,6 +14,7 @@ const userRoutes = require("./routes/users");
 const { verifyEmailConfig } = require("./utils/email");
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app); // Socket.IO needs the raw http server, not just Express
 
 // --- Database ---
